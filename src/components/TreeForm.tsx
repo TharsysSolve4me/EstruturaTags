@@ -6,6 +6,7 @@ import { stripTree } from '../utils/stripTree';
 
 const TreeForm: React.FC = () => {
   const [formData, setFormData] = useState<TreeNode>({ id: 0, tag: '', parentId: '' });
+  const [deleteTag, setDeleteTag] = useState(''); // Novo estado para a tag a ser excluída
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
   const [fileName, setFileName] = useState('tree-structure');
   const [allowMultipleParents, setAllowMultipleParents] = useState(false);
@@ -81,17 +82,60 @@ const TreeForm: React.FC = () => {
     setFileName(e.target.value);
   };
 
-  const exportToJson = () => {
-    const treeStructure = buildTree(treeData);
-    const simplifiedTree = stripTree(treeStructure);
-    const json = JSON.stringify(simplifiedTree, null, 4);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${fileName || 'tree-structure'}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+  // Função para excluir um nó com base na tag
+  const deleteNode = (tagToDelete: string) => {
+    if (!tagToDelete) {
+      alert('Por favor, selecione uma tag para excluir');
+      return;
+    }
+
+    // Função auxiliar para obter todos os IDs dos descendentes
+    const getDescendantIds = (nodes: TreeNode[], parentTags: string[]): number[] => {
+      let descendantIds: number[] = [];
+      nodes.forEach(node => {
+        const nodeParentIds = Array.isArray(node.parentId) ? node.parentId : [node.parentId];
+        if (nodeParentIds.some(pid => parentTags.includes(pid))) {
+          descendantIds.push(node.id);
+          descendantIds = descendantIds.concat(getDescendantIds(nodes, [node.tag]));
+        }
+      });
+      return descendantIds;
+    };
+
+    const nodeToDelete = treeData.find(node => node.tag === tagToDelete);
+    if (!nodeToDelete) {
+      alert('Tag não encontrada');
+      return;
+    }
+
+    const idsToDelete = [nodeToDelete.id, ...getDescendantIds(treeData, [nodeToDelete.tag])];
+
+    // Remove os nós com IDs em idsToDelete
+    const newTreeData = treeData.filter(node => !idsToDelete.includes(node.id));
+
+    // Remove referências ao nó excluído em parentId de outros nós
+    const updatedTreeData = newTreeData.map(node => {
+      if (Array.isArray(node.parentId)) {
+        return {
+          ...node,
+          parentId: node.parentId.filter(pid => pid !== nodeToDelete.tag),
+        };
+      } else if (node.parentId === nodeToDelete.tag) {
+        return {
+          ...node,
+          parentId: '',
+        };
+      }
+      return node;
+    });
+
+    setTreeData(updatedTreeData);
+    setDeleteTag(''); // Limpa o campo após a exclusão
+  };
+
+  const handleDeleteSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    deleteNode(deleteTag);
   };
 
   const treeStructure = buildTree(treeData);
@@ -118,167 +162,227 @@ const TreeForm: React.FC = () => {
   const nodeWidth = maxNodeNameLength * 10 + 60;
   const nodeSize = { x: nodeWidth, y: 120 };
 
+  const exportToJson = () => {
+    const treeStructure = buildTree(treeData);
+    const simplifiedTree = stripTree(treeStructure);
+    const json = JSON.stringify(simplifiedTree, null, 4);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${fileName || 'tree-structure'}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'Arial, sans-serif' }}>
-      {/* Seção esquerda com o formulário */}
-      <div style={{ width: '30%', padding: '20px' }}>
-        <h1 style={{ textAlign: 'center', color: '#2c3e50' }}>Árvore de Palavras</h1>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column' }}>
-          <label style={{ marginBottom: '5px', color: '#34495e' }}>ID:</label>
-          <input
-            type="number"
-            name="id"
-            value={formData.id}
-            onChange={handleChange}
-            required
-            style={{ padding: '8px', marginBottom: '15px', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
+  {/* Seção esquerda com o formulário */}
+  <div style={{ width: '30%', padding: '8px 8px 4px 8px' }}> {/* Ajustando padding para reduzir espaços */}
+    <h1 style={{ textAlign: 'center', color: '#2c3e50', marginBottom: '10px' }}>Árvore de Palavras</h1> {/* Reduzindo margem inferior */}
 
-          <label style={{ marginBottom: '5px', color: '#34495e' }}>Tag:</label>
-          <input
-            type="text"
-            name="tag"
-            value={formData.tag}
-            onChange={handleChange}
-            required
-            style={{ padding: '8px', marginBottom: '15px', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
+    {/* Formulário para adicionar tags */}
+    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column' }}>
+      <h3 style={{ color: '#2c3e50', marginBottom: '8px' }}>Adicionar Tag</h3> {/* Reduzindo margens */}
+      
+      <label style={{ marginBottom: '5px', color: '#34495e' }}>ID:</label>
+      <input
+        type="number"
+        name="id"
+        value={formData.id}
+        onChange={handleChange}
+        required
+        style={{ padding: '6px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ccc' }}
+      />
 
-          <label style={{ marginBottom: '5px', color: '#34495e' }}>Selecione o Pai (Tag):</label>
-          <select
-            name="parentId"
-            value={
-              allowMultipleParents
-                ? Array.isArray(formData.parentId)
-                  ? formData.parentId
-                  : [formData.parentId]
-                : formData.parentId
-            }
-            onChange={handleParentSelection}
-            multiple={allowMultipleParents}
-            style={{ padding: '8px', marginBottom: '15px', borderRadius: '4px', border: '1px solid #ccc' }}
-          >
-            <option value="">-- Sem Pai --</option>
-            {treeData.map(node => (
-              <option key={node.id} value={node.tag}>
-                {node.tag}
-              </option>
-            ))}
-          </select>
+      <label style={{ marginBottom: '5px', color: '#34495e' }}>Tag:</label>
+      <input
+        type="text"
+        name="tag"
+        value={formData.tag}
+        onChange={handleChange}
+        required
+        style={{ padding: '6px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ccc' }}
+      />
 
-          <label style={{ marginBottom: '15px', color: '#34495e' }}>
-            <input
-              type="checkbox"
-              checked={allowMultipleParents}
-              onChange={() => setAllowMultipleParents(!allowMultipleParents)}
-              style={{ marginRight: '5px' }}
-            />
-            Permitir múltiplos pais
-          </label>
+      <label style={{ marginBottom: '5px', color: '#34495e' }}>Selecione o Pai (Tag):</label>
+      <select
+        name="parentId"
+        value={
+          allowMultipleParents
+            ? Array.isArray(formData.parentId)
+              ? formData.parentId
+              : [formData.parentId]
+            : formData.parentId
+        }
+        onChange={handleParentSelection}
+        multiple={allowMultipleParents}
+        style={{ padding: '6px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ccc' }}
+      >
+        <option value="">-- Sem Pai --</option>
+        {treeData.map(node => (
+          <option key={node.id} value={node.tag}>
+            {node.tag}
+          </option>
+        ))}
+      </select>
 
-          <button
-            type="submit"
-            style={{
-              padding: '10px',
-              backgroundColor: '#2ecc71',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-            }}
-          >
-            Adicionar Nó
-          </button>
-        </form>
+      <label style={{ marginBottom: '10px', color: '#34495e' }}>
+        <input
+          type="checkbox"
+          checked={allowMultipleParents}
+          onChange={() => setAllowMultipleParents(!allowMultipleParents)}
+          style={{ marginRight: '5px' }}
+        />
+        Permitir múltiplos pais
+      </label>
 
-        <div style={{ marginTop: '30px' }}>
-          <label style={{ marginBottom: '5px', color: '#34495e' }}>Nome do Arquivo:</label>
-          <input
-            type="text"
-            value={fileName}
-            onChange={handleFileNameChange}
-            placeholder="Digite o nome do arquivo"
-            style={{ padding: '8px', marginBottom: '15px', borderRadius: '4px', border: '1px solid #ccc', width: '100%' }}
-          />
-          <button
-            onClick={exportToJson}
-            style={{
-              padding: '10px',
-              backgroundColor: '#3498db',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              width: '100%',
-            }}
-          >
-            Exportar JSON
-          </button>
-        </div>
-      </div>
-
-      {/* Seção direita com a visualização da árvore */}
-      <div
-        ref={treeContainerRef}
+      <button
+        type="submit"
         style={{
-          width: '65%',
-          height: '100vh',
-          overflowY: 'auto',
-          backgroundColor: '#ecf0f1',
-          padding: '20px',
-          borderRadius: '5px',
+          padding: '8px',
+          backgroundColor: '#2ecc71',
+          color: '#fff',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          fontWeight: 'bold',
+          marginBottom: '15px', /* Diminuindo a margem */
         }}
       >
-        <h2 style={{ textAlign: 'center', color: '#2c3e50' }}>Visualização da Árvore</h2>
-        {treeStructure.length > 0 ? (
-          <div style={{ width: '100%', height: '80vh' }}>
-            <Tree
-              data={treeStructure}
-              translate={translate}
-              orientation="vertical"
-              pathFunc="diagonal"
-              nodeSize={nodeSize}
-              styles={{
-                links: {
-                  stroke: '#bdc3c7',
-                  strokeWidth: 2,
-                },
-                nodes: {
-                  node: {
-                    circle: {
-                      stroke: '#3498db',
-                      strokeWidth: 3,
-                      fill: '#fff',
-                      filter: 'drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.1))',
-                    },
-                    name: {
-                      stroke: '#2c3e50',
-                      fontWeight: 'bold',
-                    },
-                  },
-                  leafNode: {
-                    circle: {
-                      stroke: '#e74c3c',
-                      strokeWidth: 3,
-                      fill: '#fff',
-                      filter: 'drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.1))',
-                    },
-                    name: {
-                      stroke: '#2c3e50',
-                      fontWeight: 'bold',
-                    },
-                  },
-                },
-              }}
-            />
-          </div>
-        ) : (
-          <p style={{ textAlign: 'center', color: '#7f8c8d' }}>Adicione nós para visualizar a árvore.</p>
-        )}
-      </div>
+        Adicionar Tag
+      </button>
+    </form>
+
+    {/* Formulário para excluir tags */}
+    <form onSubmit={handleDeleteSubmit} style={{ display: 'flex', flexDirection: 'column' }}>
+      <h3 style={{ color: '#2c3e50', marginBottom: '8px' }}>Excluir Tag</h3>
+      <label style={{ marginBottom: '5px', color: '#34495e' }}>Selecione a Tag para Excluir:</label>
+      <select
+        value={deleteTag}
+        onChange={e => setDeleteTag(e.target.value)}
+        style={{ padding: '6px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ccc' }}
+      >
+        <option value="">-- Selecione uma Tag --</option>
+        {treeData.map(node => (
+          <option key={node.id} value={node.tag}>
+            {node.tag}
+          </option>
+        ))}
+      </select>
+
+      <button
+        type="submit"
+        style={{
+          padding: '8px',
+          backgroundColor: '#e74c3c',
+          color: '#fff',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          fontWeight: 'bold',
+          marginBottom: '15px',
+        }}
+      >
+        Excluir Tag
+      </button>
+    </form>
+
+    {/* Entrada de nome do arquivo e botão de exportação */}
+    <div style={{ marginTop: '20px' }}> {/* Reduzindo margem superior */}
+      <label style={{ marginBottom: '5px', color: '#34495e' }}>Nome do Arquivo:</label>
+      <input
+        type="text"
+        value={fileName}
+        onChange={handleFileNameChange}
+        placeholder="Digite o nome do arquivo"
+        style={{
+          padding: '6px',
+          marginBottom: '8px',
+          borderRadius: '4px',
+          border: '1px solid #ccc',
+          width: '96%',
+        }}
+      />
+      <button
+        onClick={exportToJson}
+        style={{
+          padding: '8px',
+          backgroundColor: '#3498db',
+          color: '#fff',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          fontWeight: 'bold',
+          marginBottom: '15px',
+          width: '100%'
+        }}
+      >
+        Exportar JSON
+      </button>
     </div>
+  </div>
+
+  {/* Seção direita com a visualização da árvore */}
+  <div
+    ref={treeContainerRef}
+    style={{
+      width: '65%',
+      height: '100vh',
+      overflowY: 'auto',
+      backgroundColor: '#ecf0f1',
+      padding: '20px',
+      borderRadius: '5px',
+    }}
+  >
+    <h2 style={{ textAlign: 'center', color: '#2c3e50' }}>Visualização da Árvore</h2>
+    {treeStructure.length > 0 ? (
+      <div style={{ width: '100%', height: '80vh' }}>
+        <Tree
+          data={treeStructure}
+          translate={translate}
+          orientation="vertical"
+          pathFunc="diagonal"
+          nodeSize={nodeSize}
+          styles={{
+            links: {
+              stroke: '#bdc3c7',
+              strokeWidth: 2,
+            },
+            nodes: {
+              node: {
+                circle: {
+                  stroke: '#3498db',
+                  strokeWidth: 3,
+                  fill: '#fff',
+                  filter: 'drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.1))',
+                },
+                name: {
+                  stroke: '#2c3e50',
+                  fontWeight: 'bold',
+                },
+              },
+              leafNode: {
+                circle: {
+                  stroke: '#e74c3c',
+                  strokeWidth: 3,
+                  fill: '#fff',
+                  filter: 'drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.1))',
+                },
+                name: {
+                  stroke: '#2c3e50',
+                  fontWeight: 'bold',
+                },
+              },
+            },
+          }}
+        />
+      </div>
+    ) : (
+      <p style={{ textAlign: 'center', color: '#7f8c8d' }}>Adicione nós para visualizar a árvore.</p>
+    )}
+  </div>
+</div>
   );
 };
 
