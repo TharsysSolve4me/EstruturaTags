@@ -2,12 +2,12 @@ import { Tree } from '../interfaces/Tree';
 
 interface ExportTreeNode {
   name: string;
-  children?: ExportTreeNode[];
+  childrens?: ExportTreeNode[];
 }
 
 export function stripTree(tree: Tree[]): ExportTreeNode[] {
   return tree.map(node => ({
     name: node.name,
-    children: node.children.length > 0 ? stripTree(node.children) : [],
+    childrens: node.children.length > 0 ? stripTree(node.children) : [],
   }));
 }
